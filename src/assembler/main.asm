@@ -10,6 +10,7 @@
 #define charedit_row ram_start + 5
 #define charedit_col ram_start + 6
 #define charedit_save_color ram_start + 7
+#define tick_value_buffer + 8
 #define grid_width_h grid_width / 2
 #define cursor_key $8F
 #define tileset_size (tileset_width_bytes * tileset_height)
@@ -63,6 +64,9 @@ isr_start:
   ld a, $0  
   ld (key_input_location), a
 
+  ld a, (tick_value)
+  ld (tick_value_buffer), a
+
   exx
   ex af,af'  
   ret
@@ -89,9 +93,68 @@ main:
   ld (view_key), a
   ld b, a
   call write_tile_b_to_view
+  push hl
+  ld hl, sprite_table_start
+  ; sprite 0 Y
+  ld a, $8
+  ld (hl), a
+  inc hl
+  ; sprite 0 X
+  ld (hl), a
+  inc hl
+  ; sprite 0 character
+  ld a, $94
+  ld (hl), a
+  inc hl
+  ; sprite 0 flags
+  ld a, $80
+  ld (hl), a
+  inc hl
+  ; sprite 1 Y
+  ld a, $50
+  ld (hl), a
+  inc hl
+  ; sprite 1 X
+  ld a, $8
+  ld (hl), a
+  inc hl
+  ; sprite 1 character
+  ld a, $94
+  ld (hl), a
+  inc hl
+  ; sprite 1 flags
+  ld a, $A0 ; reversed
+  ld (hl), a
+  pop hl
 main_loop:
   ei
   halt
+main_time_process:
+  ld a, (tick_value_buffer)
+  sub $A
+  jp c, main_process_input
+  ld (tick_value), a
+  push hl
+  ld hl, sprite_table_start ; S0 Y
+  inc hl ; S0 X
+  inc hl ; S0 C
+  ld a, (hl)
+  inc a
+  sub $9B
+  jp z, _sprite_main_reset
+  jp nc, _sprite_main_reset
+  add a, $9B
+  jp _sprite_main_finish
+_sprite_main_reset:
+  ld a, $94
+_sprite_main_finish:
+  ld (hl), a
+  inc hl ; S0 F
+  inc hl ; S1 Y
+  inc hl ; S1 X
+  inc hl ; S1 C
+  ld (hl), a
+  pop hl
 main_process_input:
   ld a, (key_buffer)
   sub $01
@@ -144,7 +207,7 @@ main_set_pixel:
   jp main_loop
 
 main_charedit_up:
-  call put_color
+;  call put_color
   ld a, (charedit_row)
   dec a
   and charedit_mask
@@ -152,7 +215,7 @@ main_charedit_up:
   jp charedit_end
 
 main_charedit_left:
-  call put_color
+;  call put_color
   ld a, (charedit_col)
   dec a
   and charedit_mask
@@ -160,7 +223,7 @@ main_charedit_left:
   jp charedit_end
 
 main_charedit_right:
-  call put_color
+;  call put_color
   ld a, (charedit_col)
   inc a
   and charedit_mask
@@ -168,7 +231,7 @@ main_charedit_right:
   jp charedit_end
 
 main_charedit_down:
-  call put_color
+;  call put_color
   ld a, (charedit_row)
   inc a
   and charedit_mask
@@ -183,7 +246,21 @@ put_color:
     ld c, a
     push hl
       call get_charedit_hl_b_c
-      ld a, (charedit_save_color)
+;      ld a, (charedit_save_color)
+;      ld (hl), a
+    pop hl
+  pop bc
+  ret
+
+charedit_put_view_pixel:
+  push bc
+    ld a, (charedit_col)
+    ld b, a
+    ld a, (charedit_row)
+    ld c, a
+    push hl
+      call get_charedit_hl_b_c
+      ld a, (color_value)
       ld (hl), a
     pop hl
   pop bc
@@ -197,10 +274,60 @@ charedit_end:
     ld c, a
     push hl
       call get_charedit_hl_b_c
-      ld a, (hl)
-      ld (charedit_save_color), a
-      ld a, (color_value)
-      ld (hl), a
+;      ld a, (hl)
+;      ld (charedit_save_color), a
+;      ld a, (color_value)
+;      ld (hl), a
+    pop hl
+    push hl
+      push de
+        ld a, $0
+        ld h, a
+        ld a, $8
+        ld l, a
+        ld a, b
+_charedit_sprite_col_loop:
+        push de
+          push af
+            ld a, $0
+            ld d, a
+            ld a, $8
+            ld e, a
+            adc hl, de
+          pop af
+        pop de
+        dec a
+        jp nz, _charedit_sprite_col_loop
+        
+        ld e, l
+        
+        ld a, $0
+        ld h, a
+        ld a, $8
+        ld l, a
+        ld a, c
+_charedit_sprite_row_loop:
+        push de
+          push af
+            ld a, $0
+            ld d, a
+            ld a, $8
+            ld e, a
+            adc hl, de
+          pop af
+        pop de
+        dec a
+        jp nz, _charedit_sprite_row_loop
+        
+        ld d, l
+        
+        push hl
+          ld hl, sprite_table_start
+          ld (hl), d
+          inc hl
+          ld (hl), e
+        pop hl
+      pop de
     pop hl
   pop bc
   jp main_loop
@@ -271,84 +398,89 @@ _charedit_row_loop:
       jp nz, _charedit_row_loop
 _charedit_row_end:
       ld a, (color_value)
+      sub $C0
+      jp z, _char_edit_place
+      add a, $C0
+_char_edit_place:
       ld (de), a
       ld (charedit_save_color), a
+      call charedit_put_view_pixel
     pop bc
   pop de
   ret
 
 main_red_up:
   push bc
-  ld a, (color_value)
-  ld b, a
-  and red_mask
-  rra 
-  rra 
-  rra 
-  rra 
-  inc a
-  ld c, a
-  and two_bit_mask
-  add a, '0'
-  ld (red_location), a
-  ld a, c
-  rla
-  rla
-  rla
-  rla
-  and red_mask
-  ld c, a
-  ld a, b
-  and inv_red_mask
-  or c
-  ld (color_value), a
-  ld (color_location), a
+    ld a, (color_value)
+    ld b, a
+    and red_mask
+    rra 
+    rra 
+    rra 
+    rra 
+    inc a
+    ld c, a
+    and two_bit_mask
+    add a, '0'
+    ld (red_location), a
+    ld a, c
+    rla
+    rla
+    rla
+    rla
+    and red_mask
+    ld c, a
+    ld a, b
+    and inv_red_mask
+    or c
+    ld (color_value), a
+    ld (color_location), a
   pop bc
   jp main_loop
 
 main_green_up:
   push bc
-  ld a, (color_value)
-  ld b, a
-  and green_mask
-  rra 
-  rra 
-  inc a
-  ld c, a
-  and two_bit_mask
-  add a, '0'
-  ld (green_location), a
-  ld a, c
-  rla
-  rla
-  and green_mask
-  ld c, a
-  ld a, b
-  and inv_green_mask
-  or c
-  ld (color_value), a
-  ld (color_location), a
+    ld a, (color_value)
+    ld b, a
+    and green_mask
+    rra 
+    rra 
+    inc a
+    ld c, a
+    and two_bit_mask
+    add a, '0'
+    ld (green_location), a
+    ld a, c
+    rla
+    rla
+    and green_mask
+    ld c, a
+    ld a, b
+    and inv_green_mask
+    or c
+    ld (color_value), a
+    ld (color_location), a
   pop bc
   jp main_loop
 
 main_blue_up:
   push bc
-  ld a, (color_value)
-  ld b, a
-  and blue_mask
-  inc a
-  ld c, a
-  and two_bit_mask
-  add a, '0'
-  ld (blue_location), a
-  ld a, c
-  and blue_mask
-  ld c, a
-  ld a, b
-  and inv_blue_mask
-  or c
-  ld (color_value), a
-  ld (color_location), a
+    ld a, (color_value)
+    ld b, a
+    and blue_mask
+    inc a
+    ld c, a
+    and two_bit_mask
+    add a, '0'
+    ld (blue_location), a
+    ld a, c
+    and blue_mask
+    ld c, a
+    ld a, b
+    and inv_blue_mask
+    or c
+    ld (color_value), a
+    ld (color_location), a
   pop bc
   jp main_loop
 
@@ -359,7 +491,7 @@ main_right:
   ld (view_key), a
   ld b, a
   call write_tile_b_to_view
-  jp main_loop
+  jp main_move_finish
 
 main_left:
   ld a, (view_key)
@@ -368,7 +500,7 @@ main_left:
   ld (view_key), a
   ld b, a
   call write_tile_b_to_view
-  jp main_loop
+  jp main_move_finish
 
 main_up:
   ld a, (view_key)
@@ -377,7 +509,7 @@ main_up:
   ld (view_key), a
   ld b, a
   call write_tile_b_to_view
-  jp main_loop
+  jp main_move_finish
 
 main_down:
   ld a, (view_key)
@@ -386,7 +518,61 @@ main_down:
   ld (view_key), a
   ld b, a
   call write_tile_b_to_view
+  jp main_move_finish
+
+main_move_finish:
+  push bc
+    ld a, (view_key)
+    and $F0
+    rra
+    rra
+    rra
+    rra
+    ld b, a
+    ld a, charlist_row_start
+    add a, b
+    ld b, a
+    ld a, (view_key)
+    and $0F
+    ld c, a
+    ld a, charlist_col_start
+    add a, c
+    ld c, a
+    push de
+      ld a, $1
+      ld d, a
+      call set_sprite_d_to_xy_bc
+    pop de
+  pop bc
   jp main_loop
+
+set_sprite_d_to_xy_bc:
+  ld a, d
+  push hl
+  ld hl, sprite_table_start
+_set_sprite_d_to_xy_bc_loop:
+    sub $0
+    jp z, _set_sprite_d_to_xy_bc_end
+    inc hl
+    inc hl
+    inc hl
+    inc hl
+    dec a
+    jp _set_sprite_d_to_xy_bc_loop
+_set_sprite_d_to_xy_bc_end:
+    ld a, b
+    rla
+    rla
+    rla
+    ld (hl), a
+    inc hl
+    ld a, c
+    rla
+    rla
+    rla
+    ld (hl), a
+  pop hl
+  ret
 
 write_tile_b_to_view:
   push hl
@@ -768,6 +954,8 @@ write_byte_helper:
 get_character_tileset_b_in_hl:
   ld hl, tileset_start
   ld a, b
+  sub $0
+  jp z, get_character_tileset_b_in_hl_end
   push bc
   ld bc, tileset_size
   adc hl, bc
