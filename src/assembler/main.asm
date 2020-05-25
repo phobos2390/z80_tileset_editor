@@ -1250,11 +1250,11 @@ _pixel_enclosure:
 .db 0
 
 _tileset_origin_str:
-.db "tileset_origin:\n",0
+.db "tileset_orig:\n",0
 
 _tileset_end_str:
 .db "tileset_end:\n",0
 
 _hex_digit_start:
 .db "0123456789ABCDEF"
-#include tileset_defs_color.asm
+#include tileset_defs_new_tetris.asm
