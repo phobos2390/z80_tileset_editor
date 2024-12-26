@@ -64,9 +64,6 @@ isr_start:
   ld a, $0  
   ld (key_input_location), a
 
-  ld a, (tick_value)
-  ld (tick_value_buffer), a
-
   exx
   ex af,af'  
   ret
@@ -113,7 +110,6 @@ main:
   ; sprite 1 Y
   ld a, $50
   ld (hl), a
-  inc hl
   ; sprite 1 X
   ld a, $8
   ld (hl), a
@@ -129,32 +125,6 @@ main:
 main_loop:
   ei
   halt
-main_time_process:
-  ld a, (tick_value_buffer)
-  sub $A
-  jp c, main_process_input
-  ld (tick_value), a
-  push hl
-  ld hl, sprite_table_start ; S0 Y
-  inc hl ; S0 X
-  inc hl ; S0 C
-  ld a, (hl)
-  inc a
-  sub $9B
-  jp z, _sprite_main_reset
-  jp nc, _sprite_main_reset
-  add a, $9B
-  jp _sprite_main_finish
-_sprite_main_reset:
-  ld a, $94
-_sprite_main_finish:
-  ld (hl), a
-  inc hl ; S0 F
-  inc hl ; S1 Y
-  inc hl ; S1 X
-  inc hl ; S1 C
-  ld (hl), a
-  pop hl
 main_process_input:
   ld a, (key_buffer)
   sub $01
