@@ -1,6 +1,7 @@
 assembled_bin = build/main_z80bin
 emulator_bin = build/z80_sdl_emulator/z80_emulator
 persistence_file = build/persistence.txt
+assembler = z80_sdl_emulator/spasm-ng/spasm
 
 emulator: 
 	mkdir -p build
@@ -13,10 +14,14 @@ run: emulator assemble
 valgrind: emulator assemble
 	valgrind $(emulator_bin) $(assembled_bin) $(persistence_file)
 
-assemble: emulator
-	spasm	-I z80_sdl_emulator/src/assembler\
-		-I src/assembler src/assembler/main.asm\
-		$(assembled_bin)
+assembler: 
+	cd z80_sdl_emulator/spasm-ng && make
+
+
+assemble: emulator assembler
+	$(assembler)	-I z80_sdl_emulator/src/assembler\
+			-I src/assembler src/assembler/main.asm\
+			$(assembled_bin)
 
 
 #build:
